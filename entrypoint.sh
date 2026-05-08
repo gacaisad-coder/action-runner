@@ -10,6 +10,8 @@ RUNNER_NAME="${RUNNER_NAME:-$(hostname)}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-_work}"
 RUNNER_LABELS="${RUNNER_LABELS:-docker}"
 RUNNER_GROUP="${RUNNER_GROUP:-Default}"
+FORCE_RECONFIGURE="${FORCE_RECONFIGURE:-true}"
+RUNNER_ALLOW_RUNASROOT="${RUNNER_ALLOW_RUNASROOT:-0}"
 
 get_runner_token() {
   if [ -n "${RUNNER_TOKEN:-}" ]; then
@@ -27,21 +29,51 @@ get_runner_token() {
   /scripts/get-registration-token.sh
 }
 
-trap 'exit 130' INT
-trap 'exit 143' TERM
+cleanup_runner_config() {
+  if [ ! -f .runner ]; then
+    return 0
+  fi
 
-if [ ! -f .runner ]; then
-  echo "Configuring runner..."
-  registration_token="$(get_runner_token)"
-  ./config.sh \
-    --unattended \
-    --url "$RUNNER_URL" \
-    --token "$registration_token" \
-    --name "$RUNNER_NAME" \
-    --work "$RUNNER_WORKDIR" \
-    --labels "$RUNNER_LABELS" \
-    --runnergroup "$RUNNER_GROUP"
+  echo "Existing runner config detected; removing previous registration before reconfigure..." >&2
+  local remove_token
+  remove_token="$(get_runner_token)"
+  ./config.sh remove --unattended --token "$remove_token" || {
+    echo "Warning: existing runner removal failed; continuing with local cleanup" >&2
+  }
+  rm -f .runner .credentials .credentials_rsaparams .env .path
+  rm -rf _diag
+}
+
+shutdown() {
+  if [ -f .runner ]; then
+    echo "Stopping runner and removing registration..." >&2
+    local remove_token
+    remove_token="$(get_runner_token)"
+    ./config.sh remove --unattended --token "$remove_token" || {
+      echo "Warning: runner deregistration during shutdown failed" >&2
+    }
+  fi
+}
+
+trap 'shutdown; exit 130' INT
+trap 'shutdown; exit 143' TERM
+trap 'shutdown' EXIT
+
+if [ "$FORCE_RECONFIGURE" = "true" ]; then
+  cleanup_runner_config
 fi
+
+echo "Configuring runner..."
+registration_token="$(get_runner_token)"
+./config.sh \
+  --unattended \
+  --replace \
+  --url "$RUNNER_URL" \
+  --token "$registration_token" \
+  --name "$RUNNER_NAME" \
+  --work "$RUNNER_WORKDIR" \
+  --labels "$RUNNER_LABELS" \
+  --runnergroup "$RUNNER_GROUP"
 
 echo "Starting runner..."
 ./run.sh &

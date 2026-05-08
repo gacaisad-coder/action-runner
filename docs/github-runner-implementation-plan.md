@@ -42,8 +42,9 @@
 2. 讀取 runner 基本設定（URL、labels、group、workdir）
 3. 若有提供 `RUNNER_TOKEN`，走舊模式直接註冊
 4. 若未提供 `RUNNER_TOKEN`，則改用長期 GitHub 憑證向 GitHub API 申請短效 registration token
-5. 以取得的 token 執行 `config.sh`
-6. 啟動 `run.sh`
+5. 若偵測到既有本地 runner 設定，先移除舊註冊並清理本地 metadata
+6. 以新的 token 執行 `config.sh`
+7. 啟動 `run.sh`
 
 ### 設計原則
 
@@ -120,6 +121,8 @@
 - 若 `RUNNER_TOKEN` 存在：沿用舊模式
 - 若 `RUNNER_TOKEN` 不存在：改呼叫 bootstrap 函式 / 腳本
 - bootstrap 取得 token 後再執行 `config.sh`
+- 預設每次啟動重新註冊 runner，避免重用一次性舊 token 或殘留舊註冊狀態
+- 容器停止時 best-effort 嘗試移除 GitHub 端 runner 註冊
 - 避免把敏感 token 明文輸出到 log
 
 #### 預期結果
