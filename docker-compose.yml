@@ -2,13 +2,13 @@ services:
   github-runner:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: github-runner
+      dockerfile: ${RUNNER_DOCKERFILE:-Dockerfile}
     restart: unless-stopped
     environment:
-      RUNNER_URL: https://github.com/wrenth04/autosrt
-      RUNNER_TOKEN: your_runner_registration_token
-      RUNNER_NAME: docker-runner-01
-      RUNNER_LABELS: docker,linux,x64
-      RUNNER_GROUP: Default
-      RUNNER_WORKDIR: _work
+      RUNNER_URL: ${RUNNER_URL:-https://github.com/wrenth04/autosrt}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      RUNNER_NAME: ${RUNNER_NAME:-}
+      RUNNER_LABELS: ${RUNNER_LABELS:-docker,linux,x64}
+      RUNNER_GROUP: ${RUNNER_GROUP:-Default}
+      RUNNER_WORKDIR: ${RUNNER_WORKDIR:-_work}

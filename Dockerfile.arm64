@@ -29,7 +29,8 @@ RUN curl -fsSL -o actions-runner-linux-arm64-${RUNNER_VERSION}.tar.gz \
     rm actions-runner-linux-arm64-${RUNNER_VERSION}.tar.gz
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh && chown runner:runner /entrypoint.sh
+COPY scripts/get-registration-token.sh /scripts/get-registration-token.sh
+RUN chmod +x /entrypoint.sh /scripts/get-registration-token.sh && chown runner:runner /entrypoint.sh /scripts/get-registration-token.sh
 
 USER runner
 
