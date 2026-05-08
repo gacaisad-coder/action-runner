@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+cd /actions-runner
+
 if [ -z "${RUNNER_URL:-}" ]; then
   echo "RUNNER_URL 未設定"
   exit 1
