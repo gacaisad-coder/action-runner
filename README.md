@@ -23,27 +23,55 @@
 
 - Docker
 - Docker Compose
-- GitHub repository runner registration token
+- 下列其中一種 GitHub 憑證來源：
+  - GitHub repository / organization runner registration token（舊模式）
+  - GitHub PAT（動態 bootstrap 模式）
 
 ## 設定方式
 
-請先修改 `docker-compose.yml` 內的環境變數：
+建議先複製 `.env.example` 為 `.env`：
 
-```yaml
-environment:
-  RUNNER_URL: https://github.com/wrenth04/autosrt
-  RUNNER_TOKEN: your_runner_registration_token
-  RUNNER_NAME: docker-runner-01
-  RUNNER_LABELS: docker,linux,x64
-  RUNNER_GROUP: Default
-  RUNNER_WORKDIR: _work
+```bash
+cp .env.example .env
 ```
+
+再依照你要的模式填入環境變數。
+
+### 模式 A：舊式手動 registration token
+
+```env
+RUNNER_URL=https://github.com/your-org/your-repo
+RUNNER_TOKEN=your_short_lived_registration_token
+RUNNER_NAME=
+RUNNER_LABELS=docker,linux,x64
+RUNNER_GROUP=Default
+RUNNER_WORKDIR=_work
+```
+
+### 模式 B：動態 bootstrap（推薦）
+
+```env
+RUNNER_URL=https://github.com/your-org/your-repo
+GITHUB_TOKEN=your_long_lived_github_pat
+RUNNER_NAME=
+RUNNER_LABELS=docker,linux,x64
+RUNNER_GROUP=Default
+RUNNER_WORKDIR=_work
+```
+
+在動態 bootstrap 模式下，container 會在每次啟動時：
+
+1. 使用 `GITHUB_TOKEN` 呼叫 GitHub API
+2. 動態申請新的短效 registration token
+3. 若偵測到既有 runner 設定，先嘗試移除舊註冊
+4. 再用新的短效 token 重新完成 runner 註冊
 
 ### 參數說明
 
 - `RUNNER_URL`: GitHub repository 或 organization URL
-- `RUNNER_TOKEN`: GitHub 提供的 runner registration token
-- `RUNNER_NAME`: runner 名稱
+- `RUNNER_TOKEN`: GitHub 提供的短效 runner registration token，若有提供會優先使用
+- `GITHUB_TOKEN`: 用來向 GitHub API 動態申請短效 runner registration token 的長效憑證
+- `RUNNER_NAME`: runner 名稱；若留空則預設使用 container hostname，較適合 scale
 - `RUNNER_LABELS`: runner labels，多個用逗號分隔
 - `RUNNER_GROUP`: runner group 名稱
 - `RUNNER_WORKDIR`: runner 工作目錄
@@ -55,6 +83,16 @@ environment:
 ```bash
 docker compose up -d --build
 ```
+
+### 啟動多個 runner
+
+```bash
+docker compose up -d --build --scale github-runner=2
+```
+
+建議在 scale 模式下不要手動指定固定 `RUNNER_NAME`，讓 container hostname 自動成為唯一 runner 名稱。
+
+預設情況下，每次 container 啟動都會重新註冊 runner（`FORCE_RECONFIGURE=true`），避免重用一次性的舊 registration token 或殘留舊 runner 狀態。
 
 ### 查看狀態
 
@@ -77,14 +115,26 @@ docker compose down
 docker build -t my-github-runner .
 ```
 
-### 啟動容器
+### 啟動容器（舊模式）
 
 ```bash
 docker run -d \
   --name github-runner \
-  -e RUNNER_URL="https://github.com/wrenth04/autosrt" \
+  -e RUNNER_URL="https://github.com/your-org/your-repo" \
   -e RUNNER_TOKEN="your_runner_registration_token" \
-  -e RUNNER_NAME="docker-runner-01" \
+  -e RUNNER_LABELS="docker,linux,x64" \
+  -e RUNNER_GROUP="Default" \
+  -e RUNNER_WORKDIR="_work" \
+  my-github-runner
+```
+
+### 啟動容器（動態 bootstrap 模式）
+
+```bash
+docker run -d \
+  --name github-runner \
+  -e RUNNER_URL="https://github.com/your-org/your-repo" \
+  -e GITHUB_TOKEN="your_long_lived_github_pat" \
   -e RUNNER_LABELS="docker,linux,x64" \
   -e RUNNER_GROUP="Default" \
   -e RUNNER_WORKDIR="_work" \
@@ -166,17 +216,19 @@ docker pull your-dockerhub-user/github-runner:0.1.0
 ## 注意事項
 
 - `RUNNER_TOKEN` 具有時效性，過期後需要重新產生
+- `GITHUB_TOKEN` 是長期憑證，請使用最小必要權限並妥善保管
 - 建議不要把真實 token 直接提交到版本控制
-- 目前 `docker-compose.yml` 內是明文設定，若要更安全可改成使用 `.env`
-- 容器重新啟動時會沿用既有 runner 設定，不會自動執行 `./config.sh remove`
-- 若你刪除容器或不再使用該 runner，需在 GitHub 端手動移除殘留 runner 紀錄
+- 建議使用 `.env` 管理敏感資訊
+- 預設每次 container 啟動都會重新註冊 runner；若你真的想沿用既有本地設定，可自行將 `FORCE_RECONFIGURE=false`
+- 容器停止時會 best-effort 嘗試移除 GitHub 端 runner 註冊，但若 remove token 失敗，仍可能留下殘留 runner 紀錄
+- 若你刪除容器或不再使用該 runner，仍建議在 GitHub 端確認是否有殘留 runner 紀錄
+- 目前動態 bootstrap 第一版支援 GitHub.com 的 repo / org URL；若是 GitHub Enterprise Server，可透過 `GITHUB_API_URL` 覆寫 API base URL
 
 ## 建議改進
 
 如果要進一步優化，可以再加入：
 
-- `.env` 管理敏感資訊
 - volume 掛載 `_work`
 - healthcheck
-- 自動取得 ephemeral token 的流程
-- organization 級 runner 支援
+- GitHub App-based bootstrap
+- just-in-time (JIT) runner config
