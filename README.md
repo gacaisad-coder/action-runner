@@ -59,11 +59,12 @@ RUNNER_GROUP=Default
 RUNNER_WORKDIR=_work
 ```
 
-在動態 bootstrap 模式下，container 會在啟動時：
+在動態 bootstrap 模式下，container 會在每次啟動時：
 
 1. 使用 `GITHUB_TOKEN` 呼叫 GitHub API
-2. 動態申請短效 registration token
-3. 用該短效 token 完成 runner 註冊
+2. 動態申請新的短效 registration token
+3. 若偵測到既有 runner 設定，先嘗試移除舊註冊
+4. 再用新的短效 token 重新完成 runner 註冊
 
 ### 參數說明
 
@@ -90,6 +91,8 @@ docker compose up -d --build --scale github-runner=2
 ```
 
 建議在 scale 模式下不要手動指定固定 `RUNNER_NAME`，讓 container hostname 自動成為唯一 runner 名稱。
+
+預設情況下，每次 container 啟動都會重新註冊 runner（`FORCE_RECONFIGURE=true`），避免重用一次性的舊 registration token 或殘留舊 runner 狀態。
 
 ### 查看狀態
 
@@ -216,8 +219,9 @@ docker pull your-dockerhub-user/github-runner:0.1.0
 - `GITHUB_TOKEN` 是長期憑證，請使用最小必要權限並妥善保管
 - 建議不要把真實 token 直接提交到版本控制
 - 建議使用 `.env` 管理敏感資訊
-- 容器重新啟動時會沿用既有 runner 設定，不會自動執行 `./config.sh remove`
-- 若你刪除容器或不再使用該 runner，需在 GitHub 端手動移除殘留 runner 紀錄
+- 預設每次 container 啟動都會重新註冊 runner；若你真的想沿用既有本地設定，可自行將 `FORCE_RECONFIGURE=false`
+- 容器停止時會 best-effort 嘗試移除 GitHub 端 runner 註冊，但若 remove token 失敗，仍可能留下殘留 runner 紀錄
+- 若你刪除容器或不再使用該 runner，仍建議在 GitHub 端確認是否有殘留 runner 紀錄
 - 目前動態 bootstrap 第一版支援 GitHub.com 的 repo / org URL；若是 GitHub Enterprise Server，可透過 `GITHUB_API_URL` 覆寫 API base URL
 
 ## 建議改進
